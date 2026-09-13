@@ -1,6 +1,19 @@
 # State
 
-Last updated: 2026-09-12
+Last updated: 2026-09-13
+
+## CI assertion migration and README diagrams
+
+The public release translated the Hetzner operator scripts and keyring helper
+to English, but the Linux GitHub Actions suite still asserted their former
+Italian messages. The resulting CI failures were assertion-contract drift, not
+runtime failures: the scripts emitted the intended English fail-closed errors.
+The affected deterministic evals now assert the English messages.
+
+The README also includes maintained diagrams for the agentic workflow,
+high-level harness architecture, and the explicitly experimental remote
+execution path. The remote diagram does not change the supported local
+baseline or remove human approval requirements.
 
 ## Current release work
 
