@@ -1,0 +1,69 @@
+# Harness assets propagated from AES to consumer repositories by `aes-sync.sh`.
+#
+# Columns: MODE SOURCE DESTINATION [MANAGED_KEYS]
+#   SOURCE        path relative to the AES root
+#   DESTINATION   path relative to the consumer repository root
+#
+# Modes:
+#   copy        always replaces the destination with the source
+#   seed        copies only when the destination is absent; never replaces it
+#               (consumer-local configuration)
+#   merge-json  merges only MANAGED_KEYS (4th column, comma-separated dotted
+#               paths) into the destination, preserving every other consumer key
+#
+# No source is duplicated: every asset has one source of truth in AES, which is
+# also the file AES uses for itself.
+copy        harness/scripts/git-orient.sh     harness/scripts/git-orient.sh
+copy        harness/scripts/feature-start.sh  harness/scripts/feature-start.sh
+copy        harness/scripts/feature-done.sh   harness/scripts/feature-done.sh
+copy        harness/scripts/review-locale.sh  harness/scripts/review-locale.sh
+copy        harness/scripts/guard-push.sh     harness/scripts/guard-push.sh
+copy        harness/scripts/wait-checks.sh    harness/scripts/wait-checks.sh
+copy        harness/scripts/aes-sync.sh       harness/scripts/aes-sync.sh
+copy        harness/scripts/aes-bump.sh       harness/scripts/aes-bump.sh
+copy        harness/manifest.txt              harness/manifest.txt
+# Reasoning monitor (ADR 0014). One line per file: the manifest copies files,
+# not directories, and keeping this explicit makes monitor-surface growth
+# visible in diffs.
+copy        harness/scripts/agent-monitor/posttooluse.sh  harness/scripts/agent-monitor/posttooluse.sh
+copy        harness/scripts/agent-monitor/doctor.py       harness/scripts/agent-monitor/doctor.py
+copy        harness/scripts/agent-monitor/hook.py         harness/scripts/agent-monitor/hook.py
+copy        harness/scripts/agent-monitor/detector.py     harness/scripts/agent-monitor/detector.py
+copy        harness/scripts/agent-monitor/ledger.py       harness/scripts/agent-monitor/ledger.py
+copy        harness/scripts/agent-monitor/probe.py        harness/scripts/agent-monitor/probe.py
+# GitHub Issues task flow (ADR 0015). As with the monitor, one line per file:
+# surface growth must remain visible in diffs.
+copy        harness/scripts/tasks/contract.py         harness/scripts/tasks/contract.py
+copy        harness/scripts/tasks/readiness.py        harness/scripts/tasks/readiness.py
+copy        harness/scripts/tasks/authorization.py    harness/scripts/tasks/authorization.py
+copy        harness/scripts/tasks/provider_github.py  harness/scripts/tasks/provider_github.py
+copy        harness/scripts/tasks/claim.py            harness/scripts/tasks/claim.py
+copy        harness/scripts/tasks/tasks.py            harness/scripts/tasks/tasks.py
+copy        harness/scripts/tasks/dispatch.py         harness/scripts/tasks/dispatch.py
+copy        harness/scripts/tasks/dispatcher.py      harness/scripts/tasks/dispatcher.py
+copy        harness/scripts/tasks/model_router.py    harness/scripts/tasks/model_router.py
+copy        harness/scripts/tasks/quota.py            harness/scripts/tasks/quota.py
+copy        harness/scripts/tasks/quota_collectors.py harness/scripts/tasks/quota_collectors.py
+copy        harness/scripts/tasks/claude_sandbox.py  harness/scripts/tasks/claude_sandbox.py
+copy        harness/scripts/tasks/orchestration.py    harness/scripts/tasks/orchestration.py
+copy        harness/scripts/tasks/issue_orchestrator.py harness/scripts/tasks/issue_orchestrator.py
+copy        harness/scripts/tasks/publisher.py        harness/scripts/tasks/publisher.py
+copy        harness/scripts/tasks/worker.py           harness/scripts/tasks/worker.py
+# Skills describe propagated tools: if the CLI reaches a consumer without its
+# instructions, the consumer agent has the command but not the protocol.
+copy        .agent/skills/aes-tasks/SKILL.md          .agent/skills/aes-tasks/SKILL.md
+copy        .agent/skills/aes-harness/SKILL.md        .agent/skills/aes-harness/SKILL.md
+copy        .github/ISSUE_TEMPLATE/aes-task.md        .github/ISSUE_TEMPLATE/aes-task.md
+copy        policies/autonomous-task-queue.md         policies/autonomous-task-queue.md
+copy        policies/git-workflow.md          policies/git-workflow.md
+copy        policies/documentation.md         policies/documentation.md
+copy        docs/queue-quota.md                       docs/queue-quota.md
+copy        .github/workflows/claude-review.yml          .github/workflows/claude-review.yml
+copy        .github/workflows/claude-security-review.yml .github/workflows/claude-security-review.yml
+copy        .github/workflows/security-freshness.yml    .github/workflows/security-freshness.yml
+copy        .github/workflows/tests.yml                  .github/workflows/tests.yml
+copy        .github/workflows/aes-harness-bump.yml       .github/workflows/aes-harness-bump.yml
+copy        .github/workflows/aes-queue.yml              .github/workflows/aes-queue.yml
+seed        docs/review-criteria.md                      docs/review-criteria.md
+seed        harness/config/harness.conf       harness/config/harness.conf
+merge-json  .claude/settings.json             .claude/settings.json             hooks.PreToolUse,hooks.SessionStart,hooks.PostToolUse

@@ -1,0 +1,23 @@
+{
+  "LOG": true,
+  "API_TIMEOUT_MS": 600000,
+  "Providers": [
+    {
+      "name": "openrouter",
+      "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+      "api_key": "$OPEN_ROUTER_API",
+      "models": [
+        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash-0731"
+      ],
+      "transformer": {
+        "use": ["openrouter"]
+      }
+    }
+  ],
+  "Router": {
+    "default": "openrouter,deepseek/deepseek-v4-pro",
+    "think": "openrouter,deepseek/deepseek-v4-pro",
+    "background": "openrouter,deepseek/deepseek-v4-flash-0731"
+  }
+}

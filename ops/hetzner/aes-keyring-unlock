@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Unlocks (or creates) the keyring for the account running jobs. Run as root
+# after every reboot. The password is never written to disk or displayed.
+#
+# The account and paths can be changed through the environment: a person runs
+# this script from a root shell, not a job, so the environment is as trusted as
+# its caller—unlike a job hook.
+set -euo pipefail
+
+KEYRING_USER="${AES_KEYRING_USER:-aes-runner}"
+# Root privileges are needed only to become another user.
+if [ "$KEYRING_USER" != "$(id -un)" ] && [ "$(id -u)" -ne 0 ]; then
+  echo "run as root to unlock the ${KEYRING_USER} keyring" >&2
+  exit 1
+fi
+
+RUID="$(id -u "$KEYRING_USER")"
+RUNTIME_DIR="${AES_KEYRING_RUNTIME_DIR:-/run/user/${RUID}}"
+KEYRING_HOME="${AES_KEYRING_HOME:-/var/lib/aes/users/${KEYRING_USER}}"
+BUS="unix:path=${RUNTIME_DIR}/bus"
+if [ ! -S "${RUNTIME_DIR}/bus" ]; then
+  echo "user session is absent: loginctl enable-linger ${KEYRING_USER}" >&2
+  exit 1
+fi
+
+read -r -s -p "AES keyring password: " PW; echo
+# An empty password protects nothing: the encrypted keyring file is readable
+# by the model process and could therefore be opened by anyone who reads it.
+# Do not unlock at all.
+[ -n "$PW" ] || { unset PW; echo "empty password: unlock cancelled" >&2; exit 1; }
+
+# Without this check, daemon failure would be silent under `set -e`, and the
+# operator could not distinguish "did not start" from "did not acquire the
+# service".
+if ! printf '%s' "$PW" | runuser -u "$KEYRING_USER" -- env \
+     XDG_RUNTIME_DIR="$RUNTIME_DIR" DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$KEYRING_HOME" \
+     gnome-keyring-daemon --replace --unlock --components=secrets --daemonize >/dev/null 2>&1; then
+  unset PW
+  echo "keyring daemon did not start: wrong password or missing daemon" >&2
+  exit 1
+fi
+unset PW
+sleep 1
+
+if runuser -u "$KEYRING_USER" -- env XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+     DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$KEYRING_HOME" \
+     busctl --user list --acquired 2>/dev/null | grep -q org.freedesktop.secrets; then
+  echo "Keyring unlocked."
+else
+  echo "Secret Service is not active after unlock" >&2
+  exit 1
+fi

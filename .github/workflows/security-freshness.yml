@@ -1,0 +1,50 @@
+name: Security Review Freshness
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, ready_for_review]
+
+permissions:
+  actions: read
+
+jobs:
+  freshness:
+    if: |
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Verify security review freshness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3 4 5; do
+            runs="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/claude-security-review.yml/runs" \
+              --method GET \
+              -f event=pull_request \
+              -f head_sha="${PR_HEAD_SHA}" \
+              -f per_page=100)"
+
+            # GitHub creates a workflow run even when its job is skipped by its
+            # `if`: any label could therefore create a run without starting a
+            # scan. Skipped/cancelled runs are not evidence of a security
+            # review; in-progress runs (conclusion null) and failed runs count
+            # deliberately as analyzed.
+            if jq -e --arg head_sha "${PR_HEAD_SHA}" \
+              'any(.workflow_runs[]?; .head_sha == $head_sha and ((.conclusion == null) or (.conclusion != "skipped" and .conclusion != "cancelled")))' \
+              <<<"${runs}" >/dev/null; then
+              echo "Security review execution found for ${PR_HEAD_SHA}."
+              exit 0
+            fi
+
+            if [ "${attempt}" -lt 5 ]; then
+              sleep 2
+            fi
+          done
+
+          echo "::error title=Stale security review::No eligible security review execution exists for ${PR_HEAD_SHA}; a run skipped by an unrelated label does not count because no scan started. Apply the security:rescan label to rerun the scan on the current commit."
+          exit 1

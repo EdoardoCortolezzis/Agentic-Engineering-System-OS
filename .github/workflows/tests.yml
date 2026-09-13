@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements-ci.txt ]; then
+            python -m pip install -r requirements-ci.txt
+          elif [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+          if [ -f pyproject.toml ]; then
+            # The 'test' extra is a convention, not a guarantee. Ask tomllib
+            # whether it exists instead of attempting installation and using
+            # `||`: that fallback would mask a real dependency-resolution
+            # error, not only a missing extra.
+            if python -c "import sys,tomllib; d=tomllib.load(open('pyproject.toml','rb')); sys.exit(0 if 'test' in d.get('project',{}).get('optional-dependencies',{}) else 1)"; then
+              python -m pip install -e '.[test]'
+            else
+              python -m pip install -e .
+            fi
+          fi
+          # Do not force a pytest version: a consumer may already pin one, and
+          # overriding it here would run tests against a different environment.
+          python -c 'import pytest' 2>/dev/null || python -m pip install pytest
+      - name: Run deterministic evals and tests
+        run: python -m pytest -p no:cacheprovider

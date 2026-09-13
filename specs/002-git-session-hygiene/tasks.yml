@@ -1,0 +1,11 @@
+tasks:
+  - id: orient
+    title: Report checkout freshness and branch state
+  - id: start
+    title: Create an external feature worktree
+  - id: finish
+    title: Verify integration and safely remove a feature branch
+  - id: guard
+    title: Block protected branch pushes
+  - id: hooks
+    title: Run session-start safety checks

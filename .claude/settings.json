@@ -1,0 +1,45 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$ROOT/harness/scripts/git-orient.sh\" || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null) && python3 \"$ROOT/harness/scripts/agent-monitor/doctor.py\" \"$ROOT\" || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null) && bash \"$ROOT/harness/scripts/aes-sync.sh\" --check-upstream || true'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'ROOT=${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)} && bash \"$ROOT/harness/scripts/agent-monitor/posttooluse.sh\" || true'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'ROOT=${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}; SCRIPT=\"$ROOT/harness/scripts/guard-push.sh\"; if [ -z \"$ROOT\" ] || [ ! -r \"$SCRIPT\" ]; then echo \"BLOCKED: guard-push.sh is missing or unreadable.\" >&2; exit 2; fi; bash \"$SCRIPT\"; status=$?; if [ \"$status\" -eq 0 ]; then exit 0; fi; if [ \"$status\" -ne 2 ]; then echo \"BLOCKED: guard-push.sh exited with $status instead of 0 or 2; blocking when in doubt.\" >&2; fi; exit 2'"
+          }
+        ]
+      }
+    ]
+  }
+}

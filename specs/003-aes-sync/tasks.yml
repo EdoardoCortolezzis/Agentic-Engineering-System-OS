@@ -1,0 +1,7 @@
+tasks:
+  - id: manifest
+    title: Parse copy, seed, and merge-json rows
+  - id: sync
+    title: Synchronize assets with atomic replacement
+  - id: check
+    title: Detect local drift and source staleness separately

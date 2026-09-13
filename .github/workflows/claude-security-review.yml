@@ -1,0 +1,91 @@
+name: Claude Security Review
+
+# Independent check: review runs once when a PR becomes ready, without a
+# label. Iterations remain local; ADR 0017 makes the ADR 0013 label gate
+# explicit.
+# Replaces anthropics/claude-code-security-review (see ADR 0006): that action
+# does not support a custom base URL (its env block is hardcoded) and degrades
+# errors to warnings—the false-green behavior seen on PRs #4/#5/#6—so it could
+# not migrate to OpenRouter or serve as a reliable gate. We use the same
+# claude-code-action as review (pinned to v1.0.189), which fails loudly and
+# receives a diff-aware security-review prompt.
+
+permissions:
+  pull-requests: write
+  contents: read
+  # No `id-token: write`: it is only needed for the GitHub App token's OIDC
+  # exchange, which the explicit `github_token` in the step avoids. Add it
+  # back if that input is removed.
+
+on:
+  pull_request:
+    types: [opened, reopened, labeled, ready_for_review]
+
+# The group is distinct from the review group: identical groups would cancel
+# one another.
+concurrency:
+  group: security-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    # `ready_for_review` does not fire for a PR opened already ready: `opened`
+    # and `reopened` cover that path. Together with draft == false, this avoids
+    # ADR 0010's false green and provides an independent scan without allowing
+    # it to be skipped by forgetting a label.
+    if: |
+      github.event.pull_request.draft == false &&
+      (github.event.action != 'labeled' ||
+       github.event.label.name == 'security:rescan')
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_BASE_URL: https://openrouter.ai/api
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - uses: anthropics/claude-code-action@v1.0.189
+        with:
+          anthropic_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          # Same reason as claude-review.yml: without an explicit github_token,
+          # the scan is skipped (and green) on every PR to develop until the
+          # workflows reach main. See ADR 0010.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Run a security review ONLY on this PR's diff (use `gh pr diff`).
+            Do not review the entire repository, only changed lines.
+
+            Project-specific criteria (not a generic checklist):
+            - Plaintext secrets or credentials in the diff (blocking).
+            - Hardcoded provider/endpoint references in application logic
+              (they belong in configuration).
+            - Unvalidated input / injection (SQL, command, XSS, SSRF).
+            - Weak cryptography, unsafe deserialization, RCE.
+            - HITL boundary crossed: account creation, publishing, spending,
+              or destructive automation without explicit confirmation (blocking).
+            - Access control/authentication and race conditions/TOCTOU.
+
+            Classify severity as CRITICAL / HIGH / MEDIUM / LOW.
+
+            Write every review comment in English. Keep file names,
+            identifiers, YAML keys, and commands in their original form.
+
+            Be honest about findings: verify how a platform or tool behaves
+            before asserting it. An invented finding costs more than a missed
+            one because it sends someone to fix something that is not broken.
+            If you cannot verify a claim, state it as uncertainty, not fact.
+
+            Use `gh pr comment` for the summary.
+            Use `mcp__github_inline_comment__create_inline_comment` (with
+            `confirmed: true`) for individual code points.
+            Post only GitHub comments; do not send the text as a message.
+
+          claude_args: |
+            --model deepseek/deepseek-v4-flash-0731
+            --max-turns 100
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Read,Grep,Glob"

@@ -1,0 +1,13 @@
+# Aggregate cap for AES workers on a CX33 (4 vCPU, 8 GB).
+# Leaves headroom for sshd, the runner itself, and the kernel.
+[Unit]
+Description=AES workers
+Before=slices.target
+
+[Slice]
+MemoryAccounting=yes
+MemoryHigh=6G
+MemoryMax=6800M
+CPUAccounting=yes
+CPUQuota=350%
+TasksMax=4096

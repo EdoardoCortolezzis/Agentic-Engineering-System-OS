@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.harness-version
+.claude/settings.local.json
+__pycache__/
+*.pyc
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.agent/orchestration/
+.agent/monitor/

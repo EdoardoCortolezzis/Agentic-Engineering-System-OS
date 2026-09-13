@@ -1,0 +1,84 @@
+name: Claude Auto Review
+
+# Escalation: review starts only when the PR has the `review:deep` label.
+# Iterations remain local; ADR 0017 makes the ADR 0013 label gate explicit.
+# Without `synchronize`, review refers to the event commit that started it.
+# A later push makes it STALE: remove and reapply `review:deep` to rerun it.
+# Pinned to v1.0.189 (>= v1.0.94, the known trigger-bypass mitigation from
+# ROADMAP.md Phase 0 Step 5). Update deliberately; do not use a moving @v1
+# version, which would silently update a third-party CI dependency.
+#
+# Backend: OpenRouter (not Anthropic). DeepSeek V4 Flash is served by
+# OpenRouter's Anthropic-compatible endpoint through ANTHROPIC_BASE_URL
+# (natively supported by Claude Code and this action's v1.0.189 tag). The
+# rationale and deviation from the original claude-code-router plan are in
+# ADR 0006.
+
+on:
+  pull_request:
+    types: [labeled, ready_for_review]
+
+# The group is distinct from the security-review group: identical groups would
+# cancel one another.
+concurrency:
+  group: auto-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Escalation requires a ready PR and the `review:deep` label.
+    if: |
+      github.event.pull_request.draft == false &&
+      contains(github.event.pull_request.labels.*.name, 'review:deep')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      # No `id-token: write`: it is only needed for the GitHub App token's OIDC
+      # exchange, which the explicit `github_token` below avoids. Add it back
+      # if that input is removed.
+    env:
+      ANTHROPIC_BASE_URL: https://openrouter.ai/api
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1.0.189
+        with:
+          anthropic_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          # Without this input the action exchanges an OIDC token for a GitHub
+          # App token, validating that the workflow matches DEFAULT: with
+          # GitFlow, review would remain skipped (and green) on every PR to
+          # develop until the workflows reach main. Passing a token makes
+          # `setupGitHubToken` return it immediately without validation.
+          # Rationale and accepted risk are documented in ADR 0010.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Read docs/review-criteria.md in this repository and use it as the
+            primary review criteria, not a generic checklist. Explicitly cite
+            the applicable point of docs/review-criteria.md for every comment.
+
+            Write every review comment in English. Keep file names,
+            identifiers, YAML keys, and commands in their original form.
+
+            Be honest about findings: verify how a platform or tool behaves
+            before asserting it. An invented finding costs more than a missed
+            one because it sends someone to fix something that is not broken.
+            If you cannot verify a claim, state it as uncertainty, not fact.
+
+            Note: the PR branch is already checked out in the current working
+            directory.
+
+            Use `gh pr comment` for general feedback.
+            Use `mcp__github_inline_comment__create_inline_comment` (with
+            `confirmed: true`) for code-specific points.
+            Post only GitHub comments; do not send review text as a message.
+
+          claude_args: |
+            --model deepseek/deepseek-v4-flash-0731
+            --max-turns 80
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Read,Grep,Glob"

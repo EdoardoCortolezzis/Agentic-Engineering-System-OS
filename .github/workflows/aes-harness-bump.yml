@@ -1,0 +1,52 @@
+name: AES harness bump
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * *'
+
+permissions: {}
+
+concurrency:
+  group: aes-harness-bump-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    # The vendored workflow is inert until the operator configures both source
+    # values as repository variables. This keeps the public AES repository and
+    # forks safe by default, while allowing each consumer to select its own
+    # trusted fork and release ref.
+    if: vars.AES_SOURCE_REPOSITORY != '' && vars.AES_SOURCE_REF != '' && vars.AES_SOURCE_REPOSITORY != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the consumer develop branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.AES_SYNC_TOKEN }}
+
+      # The release tag, not `develop`: this runs in consumer CI, so it must be
+      # what the operator deliberately published, not the latest commit on
+      # develop (ADR 0023). `guard-push.sh` protects the tag like integration
+      # branches.
+      - name: Check out the AES harness release
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ${{ vars.AES_SOURCE_REPOSITORY }}
+          ref: ${{ vars.AES_SOURCE_REF }}
+          path: .aes-source
+          fetch-depth: 0
+          token: ${{ secrets.AES_SYNC_TOKEN }}
+
+      # Deliberately the copy from the AES checkout, not the consumer's own:
+      # a consumer runs whatever bump script it last merged, so a bug in that
+      # script would have to be bootstrapped by hand into every consumer
+      # before the automation could fix itself. Reading it from .aes-source
+      # makes a fix reach every consumer as soon as it is released — which is
+      # when the harness-release tag moves, not when develop advances.
+      - name: Open or update the harness bump pull request
+        env:
+          GH_TOKEN: ${{ secrets.AES_SYNC_TOKEN }}
+        run: .aes-source/harness/scripts/aes-bump.sh --source "$GITHUB_WORKSPACE/.aes-source"

@@ -1,0 +1,162 @@
+name: AES autonomous issue queue
+
+# Runtime is intentionally limited to self-hosted runners authenticated with
+# Codex. A GitHub-hosted runner must never receive the worker job. The durable
+# lock remains the remote feature ref created by the worker's atomic claim.
+on:
+  issues:
+    types: [labeled]
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: aes-queue-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: github.event_name != 'issues' || github.event.label.name == 'aes:ready'
+    runs-on: [self-hosted, aes, codex]
+    env:
+      AES_SELF_HOSTED: 'true'
+      AES_QUEUE_ENABLED: ${{ vars.AES_QUEUE_ENABLED }}
+      AES_QUEUE_MAX_CONCURRENCY: ${{ vars.AES_QUEUE_MAX_CONCURRENCY }}
+      AES_QUEUE_MAX_CONCURRENCY_PER_REPO: ${{ vars.AES_QUEUE_MAX_CONCURRENCY_PER_REPO }}
+      AES_QUEUE_BUDGET: ${{ vars.AES_QUEUE_BUDGET }}
+      GH_TOKEN: ${{ secrets.AES_QUEUE_TOKEN }}
+      AES_PRODUCT_MANAGER: ${{ vars.AES_PRODUCT_MANAGER }}
+      AES_QUEUE_ALLOWED_AUTHORS: ${{ vars.AES_QUEUE_ALLOWED_AUTHORS }}
+      AES_TRUSTED_ACTOR: ${{ vars.AES_TRUSTED_ACTOR }}
+      ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+    outputs:
+      tasks: ${{ steps.plan.outputs.tasks }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: develop
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fail closed when queue credentials or trusted actor are absent
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN}" && test -n "${AES_PRODUCT_MANAGER}"
+          test -n "${AES_TRUSTED_ACTOR}"
+          token_actor="$(gh api user --jq '.login')"
+          test "${token_actor}" = "${AES_TRUSTED_ACTOR}"
+      - name: Gate issue trigger by configured author
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "issues" ]; then
+            python3 harness/scripts/tasks/dispatcher.py --check-author "${ISSUE_AUTHOR}"
+          fi
+      - name: Plan queue from remote issue state
+        id: plan
+        run: |
+          set -euo pipefail
+          python3 harness/scripts/tasks/dispatcher.py --apply > queue-plan.json
+          tasks="$(jq -c '.tasks' queue-plan.json)"
+          test "${tasks}" != 'null'
+          printf 'tasks=%s\n' "${tasks}" >> "${GITHUB_OUTPUT}"
+
+  worker:
+    needs: dispatch
+    if: needs.dispatch.outputs.tasks != '[]'
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(vars.AES_QUEUE_MAX_CONCURRENCY || '1') }}
+      matrix:
+        task: ${{ fromJSON(needs.dispatch.outputs.tasks) }}
+    concurrency:
+      group: aes-queue-${{ matrix.task.repo }}-${{ matrix.task.issue }}
+      cancel-in-progress: false
+    runs-on: [self-hosted, aes, codex]
+    env:
+      AES_SELF_HOSTED: 'true'
+      AES_QUEUE_ENABLED: ${{ vars.AES_QUEUE_ENABLED }}
+      GH_TOKEN: ${{ secrets.AES_QUEUE_TOKEN }}
+      AES_PRODUCT_MANAGER: ${{ vars.AES_PRODUCT_MANAGER }}
+      AES_QUEUE_ALLOWED_AUTHORS: ${{ vars.AES_QUEUE_ALLOWED_AUTHORS }}
+      AES_TRUSTED_ACTOR: ${{ vars.AES_TRUSTED_ACTOR }}
+      AES_INTEGRATION_BRANCH: develop
+      AES_QUOTA_CACHE_PATH: ${{ vars.AES_QUOTA_CACHE_PATH }}
+      AES_QUOTA_CACHE_ROOT: ${{ vars.AES_QUOTA_CACHE_ROOT }}
+      AES_QUOTA_CACHE_TTL_SECONDS: ${{ vars.AES_QUOTA_CACHE_TTL_SECONDS }}
+      AES_CODEX_MANAGED_CREDENTIALS: ${{ vars.AES_CODEX_MANAGED_CREDENTIALS }}
+      CODEX_HOME: ${{ vars.AES_CODEX_HOME }}
+      AES_CLAUDE_MANAGED_SANDBOX: ${{ vars.AES_CLAUDE_MANAGED_SANDBOX }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: develop
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fail closed when queue credentials or trusted actor are absent
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN}" && test -n "${AES_PRODUCT_MANAGER}"
+          test -n "${AES_TRUSTED_ACTOR}"
+          test "${AES_CODEX_MANAGED_CREDENTIALS}" = '1'
+          test -n "${CODEX_HOME}"
+          token_actor="$(gh api user --jq '.login')"
+          test "${token_actor}" = "${AES_TRUSTED_ACTOR}"
+      - name: Run one isolated worker
+        env:
+          TASK_REPO: ${{ matrix.task.repo }}
+          TASK_ISSUE: ${{ matrix.task.issue }}
+          TASK_EXECUTION_ID: ${{ matrix.task.execution_id }}
+          TASK_RESUME: ${{ matrix.task.resume }}
+          TASK_LEASE_REF: ${{ matrix.task.lease_ref || '' }}
+          TASK_LEASE_EXPECTED_SHA: ${{ matrix.task.lease_expected_sha || '' }}
+          TASK_LEASE_OWNER: ${{ matrix.task.lease_owner || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(python3 harness/scripts/tasks/worker.py
+            --repo "${TASK_REPO}"
+            --issue "${TASK_ISSUE}"
+            --execution-id "${TASK_EXECUTION_ID}")
+          if [[ "${TASK_RESUME}" == "true" ]]; then
+            args+=(--resume)
+            test -n "${TASK_LEASE_REF}"
+            test -n "${TASK_LEASE_EXPECTED_SHA}"
+            test -n "${TASK_LEASE_OWNER}"
+            args+=(--lease-ref "${TASK_LEASE_REF}"
+              --lease-expected-sha "${TASK_LEASE_EXPECTED_SHA}"
+              --lease-owner "${TASK_LEASE_OWNER}")
+          fi
+          set +e
+          "${args[@]}"
+          status=$?
+          set -e
+          if [[ "${status}" -eq 75 ]]; then
+            echo 'provider unavailable: execution paused for the next scheduled resume'
+            exit 0
+          fi
+          exit "${status}"
+      - name: Cleanup provider-resume lease
+        if: ${{ always() && matrix.task.resume == true && matrix.task.lease_ref != '' && matrix.task.lease_expected_sha != '' && matrix.task.lease_owner != '' }}
+        continue-on-error: true
+        env:
+          TASK_REPO: ${{ matrix.task.repo }}
+          TASK_ISSUE: ${{ matrix.task.issue }}
+          TASK_EXECUTION_ID: ${{ matrix.task.execution_id }}
+          TASK_LEASE_REF: ${{ matrix.task.lease_ref }}
+          TASK_LEASE_EXPECTED_SHA: ${{ matrix.task.lease_expected_sha }}
+          TASK_LEASE_OWNER: ${{ matrix.task.lease_owner }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup=(python3 harness/scripts/tasks/tasks.py resume-cleanup
+            "${TASK_ISSUE}"
+            --repo "${TASK_REPO}"
+            --execution-id "${TASK_EXECUTION_ID}"
+            --expected-sha "${TASK_LEASE_EXPECTED_SHA}"
+            --lease-ref "${TASK_LEASE_REF}")
+          test "${TASK_LEASE_OWNER}" = "${TASK_EXECUTION_ID}"
+          "${cleanup[@]}"
