@@ -68,7 +68,7 @@ class TestSbloccoPortachiavi(unittest.TestCase):
         """Una password vuota non protegge il file cifrato del portachiavi."""
         result = self.esegui("\n")
         self.assertEqual(result.returncode, 1)
-        self.assertIn("password vuota", result.stderr)
+        self.assertIn("empty password", result.stderr)
         self.assertFalse(self.tracce.exists(),
                          "il daemon è stato invocato con una password vuota")
 
@@ -78,18 +78,18 @@ class TestSbloccoPortachiavi(unittest.TestCase):
         _fake_bin(self.bin, "gnome-keyring-daemon", 'cat > /dev/null; exit 1')
         result = self.esegui("segreta\n")
         self.assertEqual(result.returncode, 1)
-        self.assertIn("non e' partito", result.stderr)
+        self.assertIn("keyring daemon did not start", result.stderr)
 
     def test_segnala_il_servizio_non_acquisito(self):
         _fake_bin(self.bin, "busctl", 'echo org.freedesktop.qualcosaltro')
         result = self.esegui("segreta\n")
         self.assertEqual(result.returncode, 1)
-        self.assertIn("Secret Service non risulta attivo", result.stderr)
+        self.assertIn("Secret Service is not active", result.stderr)
 
     def test_conferma_lo_sblocco_riuscito(self):
         result = self.esegui("segreta\n")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Portachiavi sbloccato", result.stdout)
+        self.assertIn("Keyring unlocked", result.stdout)
         self.assertNotIn("segreta", result.stdout + result.stderr)
 
     def test_non_sblocca_senza_sessione_utente(self):
@@ -97,7 +97,7 @@ class TestSbloccoPortachiavi(unittest.TestCase):
         (self.runtime / "bus").unlink()
         result = self.esegui("segreta\n")
         self.assertEqual(result.returncode, 1)
-        self.assertIn("sessione utente assente", result.stderr)
+        self.assertIn("user session is absent", result.stderr)
 
 
 if __name__ == "__main__":

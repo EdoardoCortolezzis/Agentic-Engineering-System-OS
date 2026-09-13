@@ -92,6 +92,25 @@ the contract is in the issue body, the `aes:*` label is status, and an atomic
 Git ref is the claim lock. Losing a claim means moving to another task, never
 deleting or replacing somebody else's lock.
 
+### How AES fits together
+
+AES keeps the development loop explicit: a human supplies the engineering goal,
+the harness turns it into a bounded and verifiable workflow, and human review
+remains the integration gate.
+
+![AES agentic engineering workflow](images/AES-agentic-workflow.png)
+
+The repository groups those controls into portable layers rather than coupling
+them to a single coding agent or provider.
+
+![AES architecture](images/AES-architecture.png)
+
+Remote execution is intentionally a separate, optional path. It extends the
+same issue, verification, and human-approval gates to an isolated worker; it
+does not make the default local workflow autonomous.
+
+![Experimental remote execution flow](images/AES-remote-exec.png)
+
 ## Safety and limits
 
 AES is defensive tooling, not a security boundary by itself. Review shell

@@ -37,7 +37,7 @@ class TestJobStarted(HookTestCase):
         self.fake_df(3)
         result = self.run_started(AES_MIN_FREE_GB=15)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("sotto la soglia", result.stderr)
+        self.assertIn("is below", result.stderr)
         self.assertEqual(self.stamps(), [])
 
     def test_accetta_il_primo_job_e_scrive_il_segnaposto(self):
@@ -56,7 +56,7 @@ class TestJobStarted(HookTestCase):
                                   GITHUB_WORKSPACE=self.tmp / "ws-b",
                                   AES_SLOT_WAIT_SECONDS=0)
         self.assertEqual(second.returncode, 1)
-        self.assertIn("nessun posto libero", second.stderr)
+        self.assertIn("no host slot available", second.stderr)
         self.assertEqual(len(self.stamps()), 1)
 
     def test_non_parla_di_claim_quando_rifiuta_il_dispatcher(self):
@@ -114,7 +114,7 @@ class TestJobStarted(HookTestCase):
                                   AES_SLOT_WAIT_SECONDS=60,
                                   AES_SLOT_POLL_SECONDS=1)
         self.assertEqual(atteso.returncode, 0, atteso.stderr)
-        self.assertIn("in attesa di un posto", atteso.stdout)
+        self.assertIn("waiting for a slot", atteso.stdout)
         self.assertEqual(len(self.stamps()), 1)
 
     def test_pota_i_segnaposto_rimasti_da_job_morti(self):
@@ -198,7 +198,7 @@ class TestJobStarted(HookTestCase):
                                   AES_STAMP_MAX_AGE_MINUTES=60,
                                   AES_SLOT_WAIT_SECONDS=0)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("nessun posto libero", result.stderr)
+        self.assertIn("no host slot available", result.stderr)
 
     def test_rimisura_il_disco_dopo_l_attesa(self):
         """Il disco puo' riempirsi mentre si aspetta un posto.
@@ -227,7 +227,7 @@ class TestJobStarted(HookTestCase):
                                   AES_SLOT_POLL_SECONDS=1)
         self.assertEqual(result.returncode, 1,
                          "il job e' partito con una misura del disco stantia")
-        self.assertIn("sotto la soglia", result.stderr)
+        self.assertIn("is below", result.stderr)
 
     def test_l_ambiente_del_job_non_puo_alzare_i_limiti(self):
         """Il `.env` del runner sta nella home di chi esegue i job.
@@ -256,7 +256,7 @@ class TestJobStarted(HookTestCase):
         self.fake_df(100)
         result = self.run_started(AES_HOST_MAX_JOBS="tanti")
         self.assertEqual(result.returncode, 1)
-        self.assertIn("AES_HOST_MAX_JOBS non e' un numero", result.stderr)
+        self.assertIn("AES_HOST_MAX_JOBS is not a number", result.stderr)
 
     def test_rifiuta_un_limite_vuoto(self):
         """Un valore vuoto è il caso che una validazione concatenata perde.
@@ -269,7 +269,7 @@ class TestJobStarted(HookTestCase):
         result = self.run_started(AES_HOST_MAX_JOBS="")
         self.assertEqual(result.returncode, 1,
                          "un tetto vuoto ha lasciato partire il job")
-        self.assertIn("AES_HOST_MAX_JOBS non e' un numero", result.stderr)
+        self.assertIn("AES_HOST_MAX_JOBS is not a number", result.stderr)
         self.assertEqual(self.stamps(), [])
 
     def test_rifiuta_il_job_se_i_segnaposto_non_sono_elencabili(self):
@@ -283,7 +283,7 @@ class TestJobStarted(HookTestCase):
         _fake_bin(self.bin, "find", 'exit 1')
         result = self.run_started(AES_HOST_MAX_JOBS=1)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("segnaposti non elencabili", result.stderr)
+        self.assertIn("stamps cannot be listed", result.stderr)
 
     def test_rifiuta_ogni_percorso_non_assoluto(self):
         """Ogni percorso va validato da solo.
@@ -295,12 +295,12 @@ class TestJobStarted(HookTestCase):
         self.fake_df(100)
         solo_lock = self.run_started(AES_LOCK_DIR="lock-relativo")
         self.assertEqual(solo_lock.returncode, 1)
-        self.assertIn("LOCK_DIR non e' un percorso assoluto", solo_lock.stderr)
+        self.assertIn("LOCK_DIR is not an absolute path", solo_lock.stderr)
 
         solo_disco = self.run_started(AES_DISK_CHECK_PATH=".")
         self.assertEqual(solo_disco.returncode, 1,
                          "un percorso disco relativo è passato dietro un LOCK_DIR assoluto")
-        self.assertIn("DISK_PATH non e' un percorso assoluto", solo_disco.stderr)
+        self.assertIn("DISK_PATH is not an absolute path", solo_disco.stderr)
 
     def test_fallisce_chiuso_se_il_lock_non_e_acquisibile(self):
         """`set -e` non vale dentro una funzione usata come condizione.
@@ -312,7 +312,7 @@ class TestJobStarted(HookTestCase):
         _fake_bin(self.bin, "flock", 'exit 1')
         result = self.run_started(AES_HOST_MAX_JOBS=1)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("lock di gate non acquisito", result.stderr)
+        self.assertIn("gate lock not acquired", result.stderr)
         self.assertEqual(self.stamps(), [])
 
     def test_due_avvii_simultanei_ne_ammettono_uno_solo(self):

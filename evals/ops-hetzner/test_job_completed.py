@@ -85,7 +85,7 @@ class TestJobCompleted(HookTestCase):
         """Un archivio relativo scriverebbe nel checkout che sta per sparire."""
         result = self.run_completed(AES_ARCHIVE_DIR="archivio-relativo")
         self.assertEqual(result.returncode, 0, "la pulizia non deve far fallire il job")
-        self.assertIn("ARCHIVE non e' un percorso assoluto", result.stderr)
+        self.assertIn("ARCHIVE is not an absolute path", result.stderr)
 
     def test_segnala_il_lock_non_rilasciato(self):
         """Un posto perso in silenzio ferma la coda senza dirlo.
@@ -105,7 +105,7 @@ class TestJobCompleted(HookTestCase):
         (stamp / "dentro").write_text("x")
         result = self.run_completed(**avvio)
         self.assertEqual(result.returncode, 0, "la pulizia non deve far fallire il job")
-        self.assertIn("lock del job non rilasciato", result.stderr)
+        self.assertIn("job lock not released", result.stderr)
 
     def test_archivia_il_ledger_fuori_dal_checkout(self):
         workspace = self.tmp / "workspace"
@@ -132,7 +132,7 @@ class TestJobCompleted(HookTestCase):
         self.archive.write_text("non sono una directory\n")
         result = self.run_completed(GITHUB_WORKSPACE=workspace, GITHUB_RUN_ID="3")
         self.assertEqual(result.returncode, 0, "la pulizia non deve far fallire il job")
-        self.assertIn("ledger non archiviato", result.stderr)
+        self.assertIn("ledger not archived", result.stderr)
 
     def _archivio_con(self, giorni: int, nome: str) -> Path:
         vecchio = self.archive / nome
@@ -152,7 +152,7 @@ class TestJobCompleted(HookTestCase):
         result = self.run_completed()
         self.assertTrue((antico / "state.json").exists(),
                         "un ledger è stato cancellato senza che nessuno lo chiedesse")
-        self.assertIn("la potatura e' una decisione umana", result.stdout)
+        self.assertIn("pruning is a human decision", result.stdout)
 
     def test_pota_solo_oltre_la_soglia_quando_e_configurata(self):
         """Una scadenza scritta nel file di root è un atto deliberato, ma
@@ -163,7 +163,7 @@ class TestJobCompleted(HookTestCase):
         self.assertFalse(vecchio.exists(), "il ledger scaduto non è stato rimosso")
         self.assertTrue((recente / "state.json").exists(),
                         "è stato rimosso un ledger ancora entro la soglia")
-        self.assertIn("oltre i 14 giorni", result.stdout)
+        self.assertIn("older than 14 days", result.stdout)
 
     def test_rimuove_il_worktree_pulito_e_la_sua_registrazione(self):
         """Cancellare la directory non basta.
@@ -198,7 +198,7 @@ class TestJobCompleted(HookTestCase):
         result = self.run_completed(AES_WORKTREE_MAX_AGE_DAYS=1)
         self.assertTrue((wt / "artefatti" / "credenziali.env").exists(),
                         "un file ignorato e' stato cancellato dalla pulizia")
-        self.assertIn("ignorati, lasciato", result.stdout)
+        self.assertIn("ignored files; kept", result.stdout)
 
     def test_conserva_il_worktree_se_git_status_fallisce(self):
         """Uno `status` che fallisce non e' un worktree pulito.
@@ -215,7 +215,7 @@ class TestJobCompleted(HookTestCase):
         result = self.run_completed(AES_WORKTREE_MAX_AGE_DAYS=1)
         self.assertTrue(canarino.exists(),
                         "un errore di Git ha portato a cancellare il worktree")
-        self.assertIn("non verificabile", result.stdout)
+        self.assertIn("cannot be verified", result.stdout)
 
     def test_non_fallisce_mai_il_job(self):
         """La pulizia che va storta non deve cancellare un esito verde."""
